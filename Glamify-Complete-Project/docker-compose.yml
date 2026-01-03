@@ -1,0 +1,240 @@
+version: '3.8'
+
+services:
+  # Databases
+  postgres-auth:
+    image: postgres:15-alpine
+    container_name: glamify-postgres-auth
+    environment:
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_pass
+      POSTGRES_DB: auth_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+    networks:
+      - glamify-network
+
+  postgres-salon:
+    image: postgres:15-alpine
+    container_name: glamify-postgres-salon
+    environment:
+      POSTGRES_USER: salon_user
+      POSTGRES_PASSWORD: salon_pass
+      POSTGRES_DB: salon_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_salon_data:/var/lib/postgresql/data
+    networks:
+      - glamify-network
+
+  postgres-availability:
+    image: postgres:15-alpine
+    container_name: glamify-postgres-availability
+    environment:
+      POSTGRES_USER: avail_user
+      POSTGRES_PASSWORD: avail_pass
+      POSTGRES_DB: availability_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_availability_data:/var/lib/postgresql/data
+    networks:
+      - glamify-network
+
+  postgres-booking:
+    image: postgres:15-alpine
+    container_name: glamify-postgres-booking
+    environment:
+      POSTGRES_USER: booking_user
+      POSTGRES_PASSWORD: booking_pass
+      POSTGRES_DB: booking_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_booking_data:/var/lib/postgresql/data
+    networks:
+      - glamify-network
+
+  postgres-notification:
+    image: postgres:15-alpine
+    container_name: glamify-postgres-notification
+    environment:
+      POSTGRES_USER: notify_user
+      POSTGRES_PASSWORD: notify_pass
+      POSTGRES_DB: notification_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres_notification_data:/var/lib/postgresql/data
+    networks:
+      - glamify-network
+
+  # Microservices
+  auth-service:
+    build: ./services/auth-service
+    container_name: glamify-auth-service
+    ports:
+      - "8001:8001"
+    environment:
+      PORT: 8001
+      DB_HOST: postgres-auth
+      DB_PORT: 5432
+      DB_USER: auth_user
+      DB_PASSWORD: auth_pass
+      DB_NAME: auth_db
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+      JWT_EXPIRES_IN: 24h
+    depends_on:
+      - postgres-auth
+    networks:
+      - glamify-network
+    volumes:
+      - ./services/auth-service:/app
+      - /app/node_modules
+
+  salon-service:
+    build: ./services/salon-service
+    container_name: glamify-salon-service
+    ports:
+      - "8002:8002"
+    environment:
+      PORT: 8002
+      DB_HOST: postgres-salon
+      DB_PORT: 5432
+      DB_USER: salon_user
+      DB_PASSWORD: salon_pass
+      DB_NAME: salon_db
+      AUTH_SERVICE_URL: http://auth-service:8001
+    depends_on:
+      - postgres-salon
+      - auth-service
+    networks:
+      - glamify-network
+    volumes:
+      - ./services/salon-service:/app
+      - /app/node_modules
+
+  availability-service:
+    build: ./services/availability-service
+    container_name: glamify-availability-service
+    ports:
+      - "8003:8003"
+    environment:
+      PORT: 8003
+      DB_HOST: postgres-availability
+      DB_PORT: 5432
+      DB_USER: avail_user
+      DB_PASSWORD: avail_pass
+      DB_NAME: availability_db
+      AUTH_SERVICE_URL: http://auth-service:8001
+    depends_on:
+      - postgres-availability
+      - auth-service
+    networks:
+      - glamify-network
+    volumes:
+      - ./services/availability-service:/app
+      - /app/node_modules
+
+  booking-service:
+    build: ./services/booking-service
+    container_name: glamify-booking-service
+    ports:
+      - "8004:8004"
+    environment:
+      PORT: 8004
+      DB_HOST: postgres-booking
+      DB_PORT: 5432
+      DB_USER: booking_user
+      DB_PASSWORD: booking_pass
+      DB_NAME: booking_db
+      AUTH_SERVICE_URL: http://auth-service:8001
+      SALON_SERVICE_URL: http://salon-service:8002
+      AVAILABILITY_SERVICE_URL: http://availability-service:8003
+      NOTIFICATION_SERVICE_URL: http://notification-service:8005
+    depends_on:
+      - postgres-booking
+      - auth-service
+      - salon-service
+      - availability-service
+      - notification-service
+    networks:
+      - glamify-network
+    volumes:
+      - ./services/booking-service:/app
+      - /app/node_modules
+
+  notification-service:
+    build: ./services/notification-service
+    container_name: glamify-notification-service
+    ports:
+      - "8005:8005"
+    environment:
+      PORT: 8005
+      DB_HOST: postgres-notification
+      DB_PORT: 5432
+      DB_USER: notify_user
+      DB_PASSWORD: notify_pass
+      DB_NAME: notification_db
+    depends_on:
+      - postgres-notification
+    networks:
+      - glamify-network
+    volumes:
+      - ./services/notification-service:/app
+      - /app/node_modules
+
+  api-gateway:
+    build: ./services/api-gateway
+    container_name: glamify-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      AUTH_SERVICE_URL: http://auth-service:8001
+      SALON_SERVICE_URL: http://salon-service:8002
+      AVAILABILITY_SERVICE_URL: http://availability-service:8003
+      BOOKING_SERVICE_URL: http://booking-service:8004
+      NOTIFICATION_SERVICE_URL: http://notification-service:8005
+      JWT_SECRET: your-super-secret-jwt-key-change-in-production
+    depends_on:
+      - auth-service
+      - salon-service
+      - availability-service
+      - booking-service
+      - notification-service
+    networks:
+      - glamify-network
+    volumes:
+      - ./services/api-gateway:/app
+      - /app/node_modules
+
+  frontend:
+    build: ./frontend
+    container_name: glamify-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost:8000
+    depends_on:
+      - api-gateway
+    networks:
+      - glamify-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+networks:
+  glamify-network:
+    driver: bridge
+
+volumes:
+  postgres_auth_data:
+  postgres_salon_data:
+  postgres_availability_data:
+  postgres_booking_data:
+  postgres_notification_data:
+
